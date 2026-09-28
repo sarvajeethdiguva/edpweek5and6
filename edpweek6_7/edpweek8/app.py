@@ -3,25 +3,43 @@ from PIL import Image
 import tensorflow as tf
 import numpy as np
 from pathlib import Path
+import base64
+import io
+
 
 app = Flask(__name__)
 
 
-# Load trained CNN model
-MODEL_PATH = Path(__file__).resolve().parents[2] / "plant_disease_cnn.keras"
+# ============================================================
+# LOAD TRAINED CNN MODEL
+# ============================================================
+
+MODEL_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "plant_disease_cnn.keras"
+)
+
+model = None
+model_error = None
 
 try:
     model = tf.keras.models.load_model(
         MODEL_PATH,
-        compile=False,
-        safe_mode=False
+        compile=False
     )
     print("Model loaded successfully")
-except Exception as e:
-    print("WARNING: Model could not be loaded:", e)
-    model = None
+    print("Model path:", MODEL_PATH)
 
-# Plant disease class names
+except Exception as e:
+    model_error = str(e)
+    print("WARNING: Model could not be loaded")
+    print(model_error)
+
+
+# ============================================================
+# PLANT DISEASE CLASS NAMES
+# ============================================================
+
 CLASS_NAMES = [
     "Pepper Bell Bacterial Spot",
     "Pepper Bell Healthy",
@@ -40,233 +58,500 @@ CLASS_NAMES = [
     "Tomato Healthy"
 ]
 
+
+# ============================================================
+# HTML
+# ============================================================
+
 HTML = """
 <!DOCTYPE html>
-<html>
+
+<html lang="en">
+
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
     <title>Plant Disease Detector</title>
 
     <style>
+
         * {
             box-sizing: border-box;
         }
 
         body {
             margin: 0;
+            padding: 0;
             font-family: Arial, sans-serif;
-            background: #f2f7f2;
+            background: #f4f7f4;
             color: #222;
         }
 
         .container {
-            width: 92%;
-            max-width: 600px;
-            margin: 30px auto;
+            width: 90%;
+            max-width: 900px;
+            margin: 40px auto;
+        }
+
+        .card {
             background: white;
-            padding: 25px;
-            border-radius: 18px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            text-align: center;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.10);
         }
 
         h1 {
-            margin-bottom: 8px;
-            font-size: 30px;
+            text-align: center;
+            color: #207a3c;
+            margin-bottom: 10px;
         }
 
         .subtitle {
+            text-align: center;
             color: #666;
-            margin-bottom: 25px;
+            margin-bottom: 30px;
+        }
+
+        .upload-box {
+            border: 2px dashed #4caf50;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            background: #f9fff9;
         }
 
         input[type="file"] {
+            margin: 20px 0;
             width: 100%;
-            padding: 15px;
-            margin: 15px 0;
-            border: 2px dashed #aaa;
-            border-radius: 12px;
-            background: #fafafa;
         }
 
         button {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 10px;
-            background: #2e7d32;
+            background: #2e8b57;
             color: white;
-            font-size: 18px;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
             cursor: pointer;
+            font-size: 16px;
         }
 
         button:hover {
-            background: #1b5e20;
-        }
-
-        img {
-            max-width: 100%;
-            max-height: 350px;
-            margin-top: 20px;
-            border-radius: 12px;
+            background: #256f46;
         }
 
         .result {
-            margin-top: 25px;
-            padding: 20px;
+            margin-top: 30px;
+            padding: 25px;
             border-radius: 12px;
-            background: #eef7ee;
+            background: #eef8ef;
         }
 
         .result h2 {
-            margin-top: 0;
+            color: #207a3c;
+        }
+
+        .prediction {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
         }
 
         .confidence {
-            font-size: 20px;
-            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+
+        .uploaded-image {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 12px;
+            margin-top: 15px;
         }
 
         .top3 {
-            text-align: left;
             margin-top: 20px;
         }
 
         .top3 li {
-            margin: 10px 0;
+            margin: 8px 0;
         }
+
+        .warning {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff3cd;
+            color: #856404;
+            border-radius: 8px;
+        }
+
+        .error {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8d7da;
+            color: #721c24;
+            border-radius: 8px;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 25px;
+            color: #777;
+            font-size: 14px;
+        }
+
     </style>
+
 </head>
+
 
 <body>
 
 <div class="container">
 
-    <h1>🌿 Plant Disease Detector</h1>
+    <div class="card">
 
-    <p class="subtitle">
-        Upload a plant leaf image to detect its disease.
-    </p>
+        <h1>🌱 Plant Disease Detector</h1>
 
-    <form method="POST" enctype="multipart/form-data">
+        <p class="subtitle">
+            Upload a plant leaf image to detect possible diseases
+            using a CNN model.
+        </p>
 
-        <input
-            type="file"
-            name="image"
-            accept="image/*"
-            required
-        >
 
-        <button type="submit">
-            🔍 Detect Disease
-        </button>
+        <div class="upload-box">
 
-    </form>
+            <form
+                method="POST"
+                enctype="multipart/form-data"
+            >
 
-    {% if image_data %}
-        <img src="data:image/jpeg;base64,{{ image_data }}">
-    {% endif %}
+                <label>
+                    <strong>Select a plant leaf image</strong>
+                </label>
 
-    {% if prediction %}
+                <br>
+
+                <input
+                    type="file"
+                    name="image"
+                    accept="image/*"
+                    required
+                >
+
+                <br>
+
+                <button type="submit">
+                    🔍 Detect Disease
+                </button>
+
+            </form>
+
+        </div>
+
+
+        {% if prediction %}
+
         <div class="result">
 
-            <h2>Prediction</h2>
+            <h2>Prediction Result</h2>
 
-            <p>
-                <strong>{{ prediction }}</strong>
-            </p>
+            <div class="prediction">
+                {{ prediction }}
+            </div>
 
-            <p class="confidence">
-                Confidence: {{ confidence }}%
-            </p>
+            <div class="confidence">
+                Confidence: <strong>{{ confidence }}%</strong>
+            </div>
+
+
+            {% if image_data %}
+
+            <h3>Uploaded Image</h3>
+
+            <img
+                class="uploaded-image"
+                src="data:image/jpeg;base64,{{ image_data }}"
+                alt="Uploaded plant image"
+            >
+
+            {% endif %}
+
+
+            {% if top3 %}
 
             <div class="top3">
+
                 <h3>Top 3 Predictions</h3>
 
                 <ol>
+
                     {% for name, score in top3 %}
-                        <li>
-                            <strong>{{ name }}</strong>
-                            — {{ score }}%
-                        </li>
+
+                    <li>
+                        <strong>{{ name }}</strong>
+                        — {{ score }}%
+                    </li>
+
                     {% endfor %}
+
                 </ol>
+
             </div>
 
+            {% endif %}
+
+
+            {% if confidence < 60 %}
+
+            <div class="warning">
+
+                ⚠️ Low confidence prediction.
+                Please upload a clearer leaf image or consult
+                an agricultural expert before taking action.
+
+            </div>
+
+            {% endif %}
+
         </div>
-    {% endif %}
+
+        {% endif %}
+
+
+        {% if error %}
+
+        <div class="error">
+
+            <strong>Error:</strong>
+            {{ error }}
+
+        </div>
+
+        {% endif %}
+
+
+        {% if model_error %}
+
+        <div class="warning">
+
+            The web application is running, but the trained model
+            could not be loaded.
+
+            <br><br>
+
+            Model loading information is available in the
+            deployment logs.
+
+        </div>
+
+        {% endif %}
+
+
+        <div class="footer">
+
+            Plant Disease Detection using Convolutional Neural Network
+
+        </div>
+
+    </div>
 
 </div>
 
 </body>
+
 </html>
 """
+
+
+# ============================================================
+# HOME ROUTE
+# ============================================================
 
 @app.route("/", methods=["GET", "POST"])
 def home():
 
     prediction = None
     confidence = None
-    top3 = None
+    top3 = []
     image_data = None
+    error = None
 
     if request.method == "POST":
 
         file = request.files.get("image")
 
-        if file:
+        if file is None or file.filename == "":
+            error = "Please select an image."
 
-            # Read uploaded image
+            return render_template_string(
+                HTML,
+                prediction=prediction,
+                confidence=confidence,
+                top3=top3,
+                image_data=image_data,
+                error=error,
+                model_error=model_error
+            )
+
+
+        try:
+
+            # ------------------------------------------------
+            # READ IMAGE
+            # ------------------------------------------------
+
             image = Image.open(file).convert("RGB")
 
-            # Prepare image for CNN
+
+            # ------------------------------------------------
+            # PREPARE IMAGE FOR CNN
+            # ------------------------------------------------
+
             image_resized = image.resize((224, 224))
-            image_array = np.array(image_resized)
-            image_array = np.expand_dims(image_array, axis=0)
 
-           # Make prediction
-if model is None:
-    prediction = "Model unavailable"
-    confidence = 0
-    top3 = []
-else:
-    predictions = model.predict(image_array, verbose=0)[0]
+            image_array = np.array(
+                image_resized,
+                dtype=np.float32
+            )
 
-    # Get top 3 predictions
-    top_indices = np.argsort(predictions)[-3:][::-1]
+            image_array = np.expand_dims(
+                image_array,
+                axis=0
+            )
 
-    top3 = [
-        (
-            CLASS_NAMES[i],
-            round(float(predictions[i]) * 100, 2)
-        )
-        for i in top_indices
-    ]
 
-    # Best prediction
-    best_index = top_indices[0]
+            # ------------------------------------------------
+            # MODEL CHECK
+            # ------------------------------------------------
 
-    prediction = CLASS_NAMES[best_index]
-    confidence = round(float(predictions[best_index]) * 100, 2)
+            if model is None:
 
-            # Display uploaded image
-            import base64
-            import io
+                prediction = "Model unavailable"
+                confidence = 0
+                top3 = []
+
+            else:
+
+                # --------------------------------------------
+                # MAKE PREDICTION
+                # --------------------------------------------
+
+                predictions = model.predict(
+                    image_array,
+                    verbose=0
+                )[0]
+
+
+                # --------------------------------------------
+                # SAFETY CHECK
+                # --------------------------------------------
+
+                if len(predictions) != len(CLASS_NAMES):
+
+                    raise ValueError(
+                        "Model output contains "
+                        + str(len(predictions))
+                        + " classes, but CLASS_NAMES contains "
+                        + str(len(CLASS_NAMES))
+                        + " classes."
+                    )
+
+
+                # --------------------------------------------
+                # TOP 3 PREDICTIONS
+                # --------------------------------------------
+
+                top_indices = np.argsort(
+                    predictions
+                )[-3:][::-1]
+
+
+                top3 = [
+
+                    (
+                        CLASS_NAMES[i],
+                        round(
+                            float(predictions[i]) * 100,
+                            2
+                        )
+                    )
+
+                    for i in top_indices
+
+                ]
+
+
+                # --------------------------------------------
+                # BEST PREDICTION
+                # --------------------------------------------
+
+                best_index = top_indices[0]
+
+                prediction = CLASS_NAMES[best_index]
+
+                confidence = round(
+                    float(predictions[best_index]) * 100,
+                    2
+                )
+
+
+            # ------------------------------------------------
+            # CONVERT IMAGE TO BASE64
+            # ------------------------------------------------
 
             buffer = io.BytesIO()
-            image.save(buffer, format="JPEG")
+
+            image.save(
+                buffer,
+                format="JPEG"
+            )
+
             image_data = base64.b64encode(
                 buffer.getvalue()
             ).decode("utf-8")
 
+
+        except Exception as e:
+
+            error = str(e)
+
+            print("Prediction error:")
+            print(error)
+
+
     return render_template_string(
+
         HTML,
+
         prediction=prediction,
+
         confidence=confidence,
+
         top3=top3,
-        image_data=image_data
+
+        image_data=image_data,
+
+        error=error,
+
+        model_error=model_error
+
     )
 
 
+# ============================================================
+# RUN APPLICATION
+# ============================================================
+
 if __name__ == "__main__":
-    app.run(debug=True)
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=False
+    )
