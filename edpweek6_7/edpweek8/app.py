@@ -7,8 +7,19 @@ from pathlib import Path
 app = Flask(__name__)
 
 # Load trained CNN model
+# Load trained CNN model
 MODEL_PATH = Path(__file__).resolve().parents[2] / "plant_disease_cnn.keras"
-model = tf.keras.models.load_model(MODEL_PATH)
+
+try:
+    model = tf.keras.models.load_model(
+        MODEL_PATH,
+        compile=False,
+        safe_mode=False
+    )
+    print("Model loaded successfully")
+except Exception as e:
+    print("WARNING: Model could not be loaded:", e)
+    model = None
 
 # Plant disease class names
 CLASS_NAMES = [
@@ -213,25 +224,30 @@ def home():
             image_array = np.array(image_resized)
             image_array = np.expand_dims(image_array, axis=0)
 
-            # Make prediction
-            predictions = model.predict(image_array, verbose=0)[0]
+           # Make prediction
+if model is None:
+    prediction = "Model unavailable"
+    confidence = 0
+    top3 = []
+else:
+    predictions = model.predict(image_array, verbose=0)[0]
 
-            # Get top 3 predictions
-            top_indices = np.argsort(predictions)[-3:][::-1]
+    # Get top 3 predictions
+    top_indices = np.argsort(predictions)[-3:][::-1]
 
-            top3 = [
-                (
-                    CLASS_NAMES[i],
-                    round(float(predictions[i]) * 100, 2)
-                )
-                for i in top_indices
-            ]
+    top3 = [
+        (
+            CLASS_NAMES[i],
+            round(float(predictions[i]) * 100, 2)
+        )
+        for i in top_indices
+    ]
 
-            # Best prediction
-            best_index = top_indices[0]
+    # Best prediction
+    best_index = top_indices[0]
 
-            prediction = CLASS_NAMES[best_index]
-            confidence = round(float(predictions[best_index]) * 100, 2)
+    prediction = CLASS_NAMES[best_index]
+    confidence = round(float(predictions[best_index]) * 100, 2)
 
             # Display uploaded image
             import base64
