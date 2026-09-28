@@ -93,52 +93,31 @@ def find_model():
 # LOAD MODEL
 # ============================================================
 
-try:
+def find_model():
+    """
+    Find the trained plant disease model.
+    The application uses the H5 version of the model.
+    """
 
-    MODEL_PATH = find_model()
+    possible_paths = [
+        Path(__file__).resolve().parent / "plant_disease_cnn.h5",
+        Path(__file__).resolve().parent / "edpweek6_7" / "edpweek8" / "plant_disease_cnn.h5",
+        Path.cwd() / "plant_disease_cnn.h5",
+    ]
 
-    if MODEL_PATH is None:
+    # Check known locations first
+    for path in possible_paths:
+        if path.exists():
+            return str(path)
 
-        model_error = (
-            "plant_disease_cnn.keras was not found. "
-            "Make sure the model file is uploaded to GitHub "
-            "and is included in the Render deployment."
-        )
+    # Search the project directory recursively
+    project_root = Path(__file__).resolve().parents[2]
 
-        print("==============================================")
-        print("MODEL NOT FOUND")
-        print(model_error)
-        print("==============================================")
+    for path in project_root.rglob("plant_disease_cnn.h5"):
+        if path.is_file():
+            return str(path)
 
-    else:
-
-        print("==============================================")
-        print("FOUND MODEL")
-        print("Model path:", MODEL_PATH)
-        print("==============================================")
-
-        model = tf.keras.models.load_model(
-            MODEL_PATH,
-            compile=False
-        )
-
-        print("==============================================")
-        print("MODEL LOADED SUCCESSFULLY")
-        print("Input shape:", model.input_shape)
-        print("Output shape:", model.output_shape)
-        print("Number of classes:", len(CLASS_NAMES))
-        print("==============================================")
-
-
-except Exception as e:
-
-    model = None
-    model_error = str(e)
-
-    print("==============================================")
-    print("MODEL LOADING ERROR")
-    print(model_error)
-    print("==============================================")
+    return None===========================================")
 
 
 # ============================================================
