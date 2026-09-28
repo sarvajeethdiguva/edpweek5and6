@@ -6,7 +6,7 @@ from pathlib import Path
 
 app = Flask(__name__)
 
-# Load trained CNN model
+
 # Load trained CNN model
 MODEL_PATH = Path(__file__).resolve().parents[2] / "plant_disease_cnn.keras"
 
